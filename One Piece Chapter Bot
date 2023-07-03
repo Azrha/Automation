@@ -1,0 +1,92 @@
+import discord
+import requests
+import asyncio
+from bs4 import BeautifulSoup
+from discord.ext import commands
+import re
+
+# Bot token and channel ID
+bot_token = ''
+channel_id = 
+
+# Set up Discord bot with specified command prefix and intents
+intents = discord.Intents.default()
+intents.typing = False
+intents.presences = False
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+
+@bot.event
+async def on_ready():
+    # Print bot name when it successfully connects to Discord
+    print(f'Bot connected as {bot.user.name}')
+    bot.loop.create_task(check_one_piece_chapter())
+
+
+@bot.command()
+async def test(ctx):
+    # Test command that sends a message to the channel
+    await ctx.send('Test message from the bot!')
+
+
+def get_latest_chapter_info(url):
+    # Function to retrieve the latest chapter info from the specified URL
+    response = requests.get(url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Find the element containing the latest chapter information
+        chapter_element = soup.find('a', class_='block border border-border bg-card mb-3 p-3 rounded')
+        if chapter_element:
+            chapter_link = chapter_element['href']
+
+            # Extract the chapter number from the chapter URL
+            chapter_number = chapter_link.split('/')[-2].split('-')[-1]
+
+            # Extract the chapter title from the element text
+            chapter_title = chapter_element.get_text(strip=True)
+
+            # Extract chapter number and title using regex
+            chapter_title_parts = re.search(r'(\d+)([A-Za-z]+)', chapter_title)
+            if chapter_title_parts:
+                chapter_number = chapter_title_parts.group(1)
+                chapter_title = f"One Piece Chapter {chapter_number}"
+
+            # Construct the full chapter URL
+            chapter_url = f"https://tcbscans.com{chapter_link}"
+            return chapter_number, chapter_title, chapter_url
+
+    # Return None if the latest chapter info couldn't be retrieved
+    return None, None, None
+
+
+async def check_one_piece_chapter():
+    # Function to periodically check for new One Piece chapters
+    url = 'https://tcbscans.com/mangas/5/one-piece'
+    latest_chapter_number = None
+
+    while True:
+        # Retrieve the latest chapter info
+        chapter_info = get_latest_chapter_info(url)
+
+        # Compare the latest chapter number with the previously stored value
+        if chapter_info and chapter_info[0] != latest_chapter_number:
+            channel = bot.get_channel(channel_id)
+            if channel:
+                chapter_number, chapter_title, chapter_url = chapter_info
+                if chapter_url:
+                    # Send a message to the channel indicating the new chapter release
+                    await channel.send(f"{chapter_title} has been released! Read it here: {chapter_url}")
+                else:
+                    await channel.send(f"{chapter_title} has been released!")
+
+                # Update the latest chapter number
+                latest_chapter_number = chapter_info[0]
+            else:
+                print(f"Channel with ID {channel_id} not found.")
+
+        # Sleep for 1 hour before checking again
+        await asyncio.sleep(3600)
+
+
+bot.run(bot_token)
